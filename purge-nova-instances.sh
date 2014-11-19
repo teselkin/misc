@@ -83,7 +83,9 @@ EOF
     printf 'done\n\n'
 }
 
-get_uuid $1
-delete_instance ${RETVAL}
-
+while [[ -n "$1" ]]; do
+    get_uuid $1
+    delete_instance ${RETVAL}
+    shift
+done
 
