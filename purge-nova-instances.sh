@@ -69,6 +69,7 @@ DELETE FROM nova.instance_faults WHERE instance_faults.instance_uuid = '${uuid}'
 DELETE FROM nova.instance_id_mappings WHERE instance_id_mappings.uuid = '${uuid}';
 DELETE FROM nova.instance_info_caches WHERE instance_info_caches.instance_uuid = '${uuid}';
 DELETE FROM nova.instance_system_metadata WHERE instance_system_metadata.instance_uuid = '${uuid}';
+DELETE FROM nova.instance_metadata WHERE instance_metadata.instance_uuid = '${uuid}';
 DELETE FROM nova.security_group_instance_association WHERE security_group_instance_association.instance_uuid = '${uuid}';
 DELETE FROM nova.block_device_mapping WHERE block_device_mapping.instance_uuid = '${uuid}';
 DELETE FROM nova.fixed_ips WHERE fixed_ips.instance_uuid = '${uuid}';
