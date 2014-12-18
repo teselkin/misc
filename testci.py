@@ -150,6 +150,7 @@ parser = argparse.ArgumentParser()
 
 #parser.add_argument('action')
 parser.add_argument('--project', nargs='+')
+parser.add_argument('--pattern', default='.*')
 parser.add_argument('--branch', default='master')
 parser.add_argument('--gerrit-user')
 parser.add_argument('--gerrit-host')
@@ -164,7 +165,7 @@ c = GerritClient(gerrit_user=args.gerrit_user,
 if args.project:
     projects = args.project
 else:
-    projects = list(c.list_projects('^openstack\/.*$'))
+    projects = list(c.list_projects(pattern=args.pattern))
 
 for project in projects:
     log.info('Processing project {0}'.format(project))
