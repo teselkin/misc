@@ -70,11 +70,16 @@ class GerritClient(object):
 
 
 class GerritRepo(object):
-    def __init__(self, project, cache_dir='/tmp', branch='master',
+    def __init__(self, project, branch='master', cache_dir=None,
                  gerrit_user=None, gerrit_host=None, gerrit_port=29418):
         self.project = project
-        self.cache_dir = cache_dir
         self.branch = branch
+        if cache_dir:
+            self.cache_dir = cache_dir
+        else:
+            self.cache_dir = os.path.join(os.getenv('HOME'), '.cache/git')
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
         self.repo_path = os.path.join(cache_dir, project)
         self.gerrit_user = gerrit_user
         self.gerrit_host = gerrit_host
