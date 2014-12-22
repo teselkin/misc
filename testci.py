@@ -80,7 +80,7 @@ class GerritRepo(object):
             self.cache_dir = os.path.join(os.getenv('HOME'), '.cache/git')
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
-        self.repo_path = os.path.join(cache_dir, project)
+        self.repo_path = os.path.join(self.cache_dir, self.project)
         self.gerrit_user = gerrit_user
         self.gerrit_host = gerrit_host
         self.gerrit_port = gerrit_port
@@ -154,7 +154,7 @@ class GerritRepo(object):
 parser = argparse.ArgumentParser()
 
 #parser.add_argument('action')
-parser.add_argument('--project', nargs='+')
+parser.add_argument('--project', nargs='*')
 parser.add_argument('--pattern', default='.*')
 parser.add_argument('--branch', default='master')
 parser.add_argument('--gerrit-user')
@@ -193,7 +193,9 @@ for project in projects:
 
     if not recheck:
         log.info("Pushing test commit ...")
-        repo = GerritRepo(project=project, branch=args.branch)
+        repo = GerritRepo(project=project, branch=args.branch,
+                          gerrit_user=args.gerrit_user,
+                          gerrit_host=args.gerrit_host)
         repo.clone()
         repo.sync()
         repo.testci()
