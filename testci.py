@@ -198,10 +198,15 @@ for project in projects:
 
     if not recheck:
         log.info("Pushing test commit ...")
-        repo = GerritRepo(project=project, branch=args.branch,
+        repo = GerritRepo(project=project,
+                          branch=args.branch,
+                          message=args.message,
                           gerrit_user=args.gerrit_user,
                           gerrit_host=args.gerrit_host)
-        repo.clone()
-        repo.sync()
-        repo.testci()
+        try:
+            repo.clone()
+            repo.sync()
+            repo.testci()
+        except:
+            log.error('Unable to create test commit for {0}'.format(project))
 
