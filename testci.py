@@ -71,13 +71,15 @@ class GerritClient(object):
 
 class GerritRepo(object):
     def __init__(self, project, branch='master', cache_dir=None,
-                 gerrit_user=None, gerrit_host=None, gerrit_port=29418):
+                 gerrit_user=None, gerrit_host=None, gerrit_port=29418,
+                 message=None):
         self.project = project
         self.branch = branch
         if cache_dir:
             self.cache_dir = cache_dir
         else:
-            self.cache_dir = os.path.join(os.getenv('HOME'), '.cache/git')
+            self.cache_dir = os.path.join(os.getenv('HOME'),
+                                          '.cache/git', gerrit_host)
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
         self.repo_path = os.path.join(self.cache_dir, self.project)
@@ -90,6 +92,7 @@ class GerritRepo(object):
             gerrit_port,
             project
         )
+        self.message=message
 
     def clone(self, force=False, commit_hook=True):
         if os.path.exists(self.repo_path):
@@ -145,7 +148,7 @@ class GerritRepo(object):
             os.chdir(self.repo_path)
             open('.testci', 'a').close()
             git('add', '-f', '.testci')
-            git('commit', '-m', 'CI Test Commit')
+            git('commit', '-m', self.message)
             git('push', 'origin', 'HEAD:refs/for/{0}'.format(self.branch))
         finally:
             os.chdir(curr_dir)
@@ -160,6 +163,7 @@ parser.add_argument('--branch', default='master')
 parser.add_argument('--gerrit-user')
 parser.add_argument('--gerrit-host')
 parser.add_argument('--gerrit-port', default=29418)
+parser.add_argument('--message', default='CI Test Commit')
 
 args = parser.parse_args()
 
@@ -176,7 +180,8 @@ for project in projects:
     log.info('Processing project {0}'.format(project))
     # Recheck existing test commits
     recheck = False
-    for change in c.query("project:{0} branch:{1} message:CI+Test+Commit".format(project, args.branch)):
+    for change in c.query("project:{0} branch:{1} message:{2}".format(project,
+                          args.branch, args.message.replace(' ', '+'))):
         if 'number' in change:
             number = change.get('number')
             details = c.details(number)
@@ -199,3 +204,4 @@ for project in projects:
         repo.clone()
         repo.sync()
         repo.testci()
+
