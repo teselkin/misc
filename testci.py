@@ -9,11 +9,12 @@ import re
 import os
 import argparse
 import logging
+import sys
 
 console = logging.StreamHandler()
 log = logging.getLogger()
 log.addHandler(console)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 
 class GerritClient(object):
@@ -49,23 +50,27 @@ class GerritClient(object):
             if j.get('type', '') != 'stat':
                 yield j
 
-    def details(self, number):
+    def details(self, number, comments=False):
         args = [
             'query',
             '--format', 'JSON',
             '--patch-sets',
             'change:{0}'.format(number)
         ]
+        if comments:
+            args.append('--comments')
         for s in self._cmd(*args):
             j = json.loads(s)
             if j.get('type', '') != 'stat':
                 return j
 
-    def review(self, change, patchset, message=None):
+    def review(self, revision, message=None, abandon=False):
         args = []
+        if abandon:
+            args.append('--abandon')
         if message:
             args.extend(['--message', message])
-        args.append('{0},{1}'.format(change, patchset))
+        args.append(revision)
         self._cmd('review', *args)
 
 
@@ -133,6 +138,7 @@ class GerritRepo(object):
             os.chdir(self.repo_path)
             git('clean', '-f', '-d', '-x')
             git('reset', '--hard')
+            git('remote', 'update')
             git('checkout', 'origin/{0}'.format(self.branch))
             head_commits = str(git('rev-list', 'HEAD', '--count')).strip()
             origin_commits = str(git('rev-list', 'origin/{0}'.format(self.branch), '--count')).strip()
@@ -156,16 +162,21 @@ class GerritRepo(object):
 
 parser = argparse.ArgumentParser()
 
-#parser.add_argument('action')
 parser.add_argument('--project', nargs='*')
 parser.add_argument('--pattern', default='.*')
 parser.add_argument('--branch', default='master')
-parser.add_argument('--gerrit-user')
-parser.add_argument('--gerrit-host')
+parser.add_argument('--gerrit-user', default='')
+parser.add_argument('--gerrit-host', default='')
 parser.add_argument('--gerrit-port', default=29418)
 parser.add_argument('--message', default='CI Test Commit')
+parser.add_argument('action')
 
 args = parser.parse_args()
+
+valid_actions = ['push', 'recheck', 'abandon-success', 'abandon-failure', 'status']
+if args.action not in valid_actions:
+    print("Action '{0}' is not valid. Valid actions are: {1}".format(args.action, valid_actions))
+    sys.exit(1)
 
 c = GerritClient(gerrit_user=args.gerrit_user,
                  gerrit_host=args.gerrit_host,
@@ -177,36 +188,61 @@ else:
     projects = list(c.list_projects(pattern=args.pattern))
 
 for project in projects:
-    log.info('Processing project {0}'.format(project))
+    log.info('\nProject {0}:'.format(project))
     # Recheck existing test commits
     recheck = False
-    for change in c.query("project:{0} branch:{1} message:{2}".format(project,
+    no_patchsets = True
+    for change in c.query("project:{0} branch:{1} message:{2} status:open".format(project,
                           args.branch, args.message.replace(' ', '+'))):
         if 'number' in change:
+            no_patchsets = False
             number = change.get('number')
-            details = c.details(number)
+            details = c.details(number, comments=True)
             if details:
                 status = details.get('status', None)
                 log.debug('status = {0}'.format(status))
                 if status == 'NEW':
                     patch_sets = details.get('patchSets', None)
                     if patch_sets:
-                        log.info("Adding recheck message ...")
-                        patchset = patch_sets[-1].get('number')
-                        c.review(number, patchset, message='recheck')
-                        recheck = True
+                        if args.action == 'recheck':
+                            log.info("Adding recheck message ...")
+                            patchset = patch_sets[-1].get('revision')
+                            c.review(revision, message='recheck')
+                            recheck = True
 
-    if not recheck:
-        log.info("Pushing test commit ...")
-        repo = GerritRepo(project=project,
-                          branch=args.branch,
-                          message=args.message,
-                          gerrit_user=args.gerrit_user,
-                          gerrit_host=args.gerrit_host)
-        try:
-            repo.clone()
-            repo.sync()
-            repo.testci()
-        except:
-            log.error('Unable to create test commit for {0}'.format(project))
+                    comments = details.get('comments', None)
+                    for comment in reversed(comments):
+                        if comment.get('reviewer', {}).get('username') == 'mos-infra-ci':
+                            comment_message = comment.get('message', '')
+                            if 'FAILURE' in comment_message:
+                                if args.action == 'status':
+                                    log.info("* patchset '{0}' failed:".format(number))
+                                    log.info(comment_message)
+                                if args.action == 'abandon-failure':
+                                    revision = patch_sets[-1].get('revision')
+                                    c.review(revision, abandon=True)
+                            else:
+                                if args.action == 'status':
+                                    log.info("* patchset '{0}' succeeded.".format(number))
+                                if args.action == 'abandon-success':
+                                    revision = patch_sets[-1].get('revision')
+                                    c.review(revision, abandon=True)
+                            break
 
+    if no_patchsets:
+        log.info("* no patchsets found")
+
+    if args.action == 'push':
+        if not recheck:
+            log.info("Pushing test commit ...")
+            repo = GerritRepo(project=project,
+                              branch=args.branch,
+                              message=args.message,
+                              gerrit_user=args.gerrit_user,
+                              gerrit_host=args.gerrit_host)
+            try:
+                repo.clone()
+                repo.sync()
+                repo.testci()
+            except:
+                log.error('Unable to create test commit for {0}'.format(project))
