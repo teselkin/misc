@@ -4,12 +4,15 @@ from sh import git
 from sh import ssh
 from sh import scp
 
+from prettytable import PrettyTable
+
 import json
 import re
 import os
 import argparse
 import logging
 import sys
+
 
 console = logging.StreamHandler()
 log = logging.getLogger()
@@ -187,6 +190,9 @@ if args.project:
 else:
     projects = list(c.list_projects(pattern=args.pattern))
 
+status_table = []
+
+
 for project in projects:
     log.info('\nProject {0}:'.format(project))
     # Recheck existing test commits
@@ -194,9 +200,9 @@ for project in projects:
     no_patchsets = True
     for change in c.query("project:{0} branch:{1} message:{2} status:open".format(project,
                           args.branch, args.message.replace(' ', '+'))):
-        if 'number' in change:
+        number = change.get('number', None)
+        if number:
             no_patchsets = False
-            number = change.get('number')
             details = c.details(number, comments=True)
             if details:
                 status = details.get('status', None)
@@ -215,16 +221,30 @@ for project in projects:
                         if comment.get('reviewer', {}).get('username') == 'mos-infra-ci':
                             comment_message = comment.get('message', '')
                             if 'FAILURE' in comment_message:
+                                status_table.append({
+                                    'project': project,
+                                    'branch': change['branch'],
+                                    'status': 'FAILURE',
+                                    'change': change['url'],
+                                })
                                 if args.action == 'status':
                                     log.info("* patchset '{0}' failed:".format(number))
                                     log.info(comment_message)
                                 if args.action == 'abandon-failure':
+                                    log.info("* abandoning patchset {0}".format(number))
                                     revision = patch_sets[-1].get('revision')
                                     c.review(revision, abandon=True)
                             else:
+                                status_table.append({
+                                    'project': project,
+                                    'branch': change['branch'],
+                                    'status': 'SUCCESS',
+                                    'change': change['url'],
+                                })
                                 if args.action == 'status':
                                     log.info("* patchset '{0}' succeeded.".format(number))
                                 if args.action == 'abandon-success':
+                                    log.info("* abandoning patchset {0}".format(number))
                                     revision = patch_sets[-1].get('revision')
                                     c.review(revision, abandon=True)
                             break
@@ -246,3 +266,11 @@ for project in projects:
                 repo.testci()
             except:
                 log.error('Unable to create test commit for {0}'.format(project))
+
+if args.action == 'status':
+    table = PrettyTable(['Project', 'Branch', 'Status', 'Change'])
+    table.align['Project'] = 'l'
+    for item in status_table:
+        table.add_row([item['project'], item['branch'], item['status'], item['change']])
+    print table
+
