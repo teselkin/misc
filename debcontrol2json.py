@@ -31,6 +31,9 @@ def parse_control_file(control_file=None):
             p_value = match.group(2)
             if p_name == 'Source' or p_name == 'Package':
                 if section:
+                    for key, value in section.items():
+                        if 'Depends' in key:
+                            section[key] = [s.strip() for s in value.split(',')]
                     output.append(section)
                 section = dict()
             section[p_name] = p_value
