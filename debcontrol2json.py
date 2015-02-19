@@ -36,6 +36,8 @@ def parse_control_file(control_file=None):
                             section[key] = [s.strip() for s in value.split(',')]
                     output.append(section)
                 section = dict()
+            if p_name == 'Description':
+                p_value = {'Summary': p_value, 'Multiline': []}
             section[p_name] = p_value
 #            print("* Got parameter '{0}' with value '{1}'".format(p_name, p_value))
             continue
@@ -43,10 +45,9 @@ def parse_control_file(control_file=None):
         match = re.search(re_indented_line, line)
         if match:
             if p_name == 'Description':
-                delim = '\n'
+                section['Description']['Multiline'].append(match.group(1))
             else:
-                delim = ' '
-            section[p_name] += delim + match.group(1)
+                section[p_name] += match.group(1)
         else:
             print("No match '{0}'".format(line))
 
