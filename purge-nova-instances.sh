@@ -76,13 +76,40 @@ DELETE FROM nova.fixed_ips WHERE fixed_ips.instance_uuid = '${uuid}';
 DELETE FROM nova.instance_actions_events WHERE instance_actions_events.action_id in (SELECT id from nova.instance_actions where instance_actions.instance_uuid = '${uuid}');
 DELETE FROM nova.instance_actions WHERE instance_actions.instance_uuid = '${uuid}';
 DELETE FROM nova.virtual_interfaces WHERE virtual_interfaces.instance_uuid = '${uuid}';
+DELETE FROM nova.instance_extra WHERE instance_extra.instance_uuid = '${uuid}';
 DELETE FROM nova.instances WHERE instances.uuid = '${uuid}';
 EOF
 )
     local result=$(${MYSQL_CMD} --batch --skip-column-names -e "${query}")
 
-    printf 'done\n\n'
+    printf 'done\n'
 }
+
+
+function delete_from_project {
+    local project=${1}
+    local query=''
+    local uuid=''
+    local project_id=''
+
+    [ -n "${project}" ]
+
+    query="SELECT id FROM keystone.project WHERE name = '${project}';"
+    project_id=$(${MYSQL_CMD} --batch --skip-column-names -e "${query}" | cut -d ' ' -f 2)
+
+    [ -n "${project_id}" ]
+
+    query="SELECT uuid from nova.instances WHERE instances.vm_state = 'deleted' AND instances.project_id = '${project_id}';"
+    for uuid in $(${MYSQL_CMD} --batch --skip-column-names -e "${query}" | cut -d ' ' -f 2); do
+        delete_instance ${uuid}
+    done
+}
+
+
+if [[ $1 == 'delete-from-project' ]]; then
+    delete_from_project $2
+    exit
+fi
 
 while [[ -n "$1" ]]; do
     get_uuid $1
