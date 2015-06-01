@@ -35,22 +35,21 @@ class Jenkins():
         return self.query(url=url, suffix='lastSuccessfulBuild')
 
 
-colors = {}
 jenkins = Jenkins(url='https://jenkins.mosi.mirantis.net')
 all_jobs = jenkins.query()
 
+active_jobs = []
 for job in all_jobs.get('jobs', []):
-    if job['color'] in colors:
-        colors[job['color']].append(job)
-    else:
-        colors[job['color']] = [job]
+    if job['color'] == 'notbuilt':
+        continue
+    active_jobs.append(job)
 
 CSV_FIELDS = [
     {'name': 'Name', 'format': '{name}'},
     {'name': 'Project', 'format': '{ZUUL_PROJECT}'},
-    {'name': 'Build number', 'format': '{number}'},
-    {'name': 'New issue', 'format': '{new_issue}'},
-    {'name': 'CI issue', 'format': ''},
+    {'name': 'Build', 'format': '{number}'},
+    {'name': 'New?', 'format': '{new_issue}'},
+    {'name': 'CI?', 'format': ''},
     {'name': 'Timestamp', 'format': '{timestamp}'},
     {'name': 'Duration', 'format': '{duration}'},
     {'name': 'Branch', 'format': '{ZUUL_BRANCH}'},
@@ -58,43 +57,54 @@ CSV_FIELDS = [
     {'name': 'Logs', 'format': 'http://logs.mosi.mirantis.net/{LOG_PATH}'},
     {'name': 'Issue type', 'format': ''},
     {'name': 'Reason', 'format': ''},
+    {'name': 'AI', 'format': ''},
+    {'name': 'FIX', 'format': ''},
 ]
 
 new_data = []
-for job in colors['red']:
-    build_info = {
-        'name': '',
-        'number': '',
-        'timestamp': '',
-        'duration': '',
-        'result': '',
-        'new_issue': '',
-        'request': '',
-        'ZUUL_PROJECT': '',
-        'ZUUL_BRANCH': '',
-        'ZUUL_CHANGE': '',
-        'ZUUL_PATCHSET': '',
-        'LOG_PATH': '',
-    }
-    job_info = jenkins.last_failed_build(url=job['url'])
-    for action in job_info.get('actions', [{}]):
-        for parameter in action.get('parameters', [{}]):
-            name = parameter.get('name', '')
-            if name in ['ZUUL_PROJECT', 'ZUUL_BRANCH',
-                        'ZUUL_PATCHSET', 'ZUUL_CHANGE', 'LOG_PATH']:
-                build_info[name] = parameter.get('value', '')
+for job in active_jobs:
+    job_info = jenkins.query(url=job['url'])
+    if job_info['healthReport'][0]['score'] == 100:
+        continue
 
-    build_info['name'] = job['name']
-    build_info['number'] = job_info['number']
-    build_info['result'] = job_info['result']
-    timestamp = datetime.datetime.utcfromtimestamp(float(job_info['timestamp'])/1000)
-    delta = datetime.datetime.utcnow() - timestamp
-    build_info['timestamp'] = str(timestamp)
-    build_info['duration'] = str(datetime.timedelta(seconds=float(job_info['duration'])/1000))
-    build_info['new_issue'] = str(delta.days == 0)
-    if build_info['ZUUL_CHANGE']:
-        build_info['request'] = 'https://review.fuel-infra.org/#/c/{ZUUL_CHANGE}/{ZUUL_PATCHSET}'.format(**build_info)
-    new_data.append(build_info)
+    for build in job_info['builds']:
+        build_report = {
+            'name': '',
+            'number': '',
+            'timestamp': '',
+            'duration': '',
+            'result': '',
+            'new_issue': '',
+            'request': '',
+            'ZUUL_PROJECT': '',
+            'ZUUL_BRANCH': '',
+            'ZUUL_CHANGE': '',
+            'ZUUL_PATCHSET': '',
+            'LOG_PATH': '',
+        }
+
+        build_info = jenkins.query(url=build['url'])
+        if build_info['result'] == 'SUCCESS':
+            continue
+
+        for action in build_info.get('actions', [{}]):
+            for parameter in action.get('parameters', [{}]):
+                name = parameter.get('name', '')
+                if name in ['ZUUL_PROJECT', 'ZUUL_BRANCH',
+                            'ZUUL_PATCHSET', 'ZUUL_CHANGE', 'LOG_PATH']:
+                    build_report[name] = parameter.get('value', '')
+
+        build_report['name'] = job['name']
+        build_report['number'] = build_info['number']
+        build_report['result'] = build_info['result']
+        timestamp = datetime.datetime.utcfromtimestamp(float(build_info['timestamp'])/1000)
+        delta = datetime.datetime.utcnow() - timestamp
+        build_report['timestamp'] = str(timestamp)
+        build_report['duration'] = str(datetime.timedelta(seconds=float(build_info['duration'])/1000))
+        build_report['new_issue'] = str(delta.days == 0)
+        if build_report['ZUUL_CHANGE']:
+            build_report['request'] = 'https://review.fuel-infra.org/#/c/{ZUUL_CHANGE}/{ZUUL_PATCHSET}'.format(**build_report)
+        new_data.append(build_report)
 
 
 report_name = str(datetime.date.today())
