@@ -3,9 +3,11 @@
 import json
 import urllib2
 import datetime
+import time
 
-url='https://jenkins.mosi.mirantis.net/view/All/api/json'
-
+url = 'https://jenkins.mosi.mirantis.net/view/All/api/json'
+now = datetime.datetime.utcnow()
+yesterday = now - datetime.timedelta(1)
 
 class Jenkins():
     def __init__(self, url):
@@ -20,13 +22,18 @@ class Jenkins():
             api_url += '/' + suffix
         api_url += '/api/json'
 
-        try:
-            resp = urllib2.urlopen(api_url)
-            data = json.loads(resp.read())
-            return data
-        except Exception as e:
-            print(e)
-            raise e
+        delay = 0
+        for x in range(1, 5):
+            delay += x
+            try:
+                resp = urllib2.urlopen(api_url)
+                data = json.loads(resp.read())
+                return data
+            except:
+                print(e)
+                time.sleep(delay)
+
+        raise Exception("Failed to get data from Jenkins in 5 attempts.")
 
     def last_failed_build(self, url):
         return self.query(url=url, suffix='lastFailedBuild')
@@ -55,6 +62,7 @@ CSV_FIELDS = [
     {'name': 'Branch', 'format': '{ZUUL_BRANCH}'},
     {'name': 'Request', 'format': '{request}'},
     {'name': 'Logs', 'format': 'http://logs.mosi.mirantis.net/{LOG_PATH}'},
+    {'name': 'Known?', 'format': ''},
     {'name': 'Issue type', 'format': ''},
     {'name': 'Reason', 'format': ''},
     {'name': 'AI', 'format': ''},
@@ -98,10 +106,10 @@ for job in active_jobs:
         build_report['number'] = build_info['number']
         build_report['result'] = build_info['result']
         timestamp = datetime.datetime.utcfromtimestamp(float(build_info['timestamp'])/1000)
-        delta = datetime.datetime.utcnow() - timestamp
+        delta = now - timestamp
         build_report['timestamp'] = str(timestamp)
         build_report['duration'] = str(datetime.timedelta(seconds=float(build_info['duration'])/1000))
-        build_report['new_issue'] = str(delta.days == 0)
+        build_report['new_issue'] = str(timestamp.date() == yesterday.date())
         if build_report['ZUUL_CHANGE']:
             build_report['request'] = 'https://review.fuel-infra.org/#/c/{ZUUL_CHANGE}/{ZUUL_PATCHSET}'.format(**build_report)
         new_data.append(build_report)
