@@ -29,7 +29,7 @@ class Jenkins():
                 resp = urllib2.urlopen(api_url)
                 data = json.loads(resp.read())
                 return data
-            except:
+            except Exception as e:
                 print(e)
                 time.sleep(delay)
 
@@ -72,7 +72,11 @@ CSV_FIELDS = [
 new_data = []
 for job in active_jobs:
     job_info = jenkins.query(url=job['url'])
-    if job_info['healthReport'][0]['score'] == 100:
+    try:
+        if job_info['healthReport'][0]['score'] == 100:
+            continue
+    except:
+        print(job_info)
         continue
 
     for build in job_info['builds']:
