@@ -1,6 +1,8 @@
 *.csv
 *.json
 *.pyc
+*.list
+*.txt
 .idea/
 .venv/
 control
